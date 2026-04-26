@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: streamvault-server
+
+  profiles:
+    active: dev
+
+  # ── H2 Embedded Database (no install needed) ────────────────────────────────
+  # Data persists to a file at ./data/streamvault so it survives restarts.
+  # Switch to postgres datasource block when ready to dockerize.
+  datasource:
+    url: jdbc:h2:file:./data/streamvault;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  h2:
+    console:
+      enabled: true          # Browse DB at http://localhost:8080/h2-console
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update       # Auto-creates / updates tables from entities — fine for H2 dev
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+
+# ── Server ───────────────────────────────────────────────────────────────────
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.streamvault: DEBUG
+    org.hibernate.SQL: WARN
+
+# ── App Custom Properties ────────────────────────────────────────────────────
+app:
+  media:
+    root-path: /path/to/your/movies        # Your local movies folder — subfolders per movie
+    hls-output-path: ${java.io.tmpdir}/streamvault-hls   # Temp folder for HLS segments
+    ffmpeg-path: ffmpeg       (USE YOUR OWN PATH FOR FFMPEG)  # Just "ffmpeg" if it's on PATH, else full path e.g. C:\ffmpeg\bin\ffmpeg.exe
+
+  jwt:
+    # Generate your own: openssl rand -base64 32  (must be Base64, min 32 chars)
+    secret: CHANGE_ME_run_openssl_rand_base64_32
+    expiration-ms: 86400000     # 24 hours
+
+  tmdb:
+    api-key: YOUR_TMDB_API_KEY  # Free at https://www.themoviedb.org/settings/api
+    base-url: https://api.themoviedb.org/3
