@@ -101,7 +101,16 @@ public class TranscodeManager {
         });
 
         // Wait for the playlist file to appear (player can't start without it)
-        waitForPlaylist(playlistPath, 60);
+        waitForPlaylist(session, playlistPath, 60);
+
+        // FFmpeg already exited without writing a playlist: fail fast with its real error
+        if (!Files.exists(Path.of(playlistPath)) && !session.isAlive()) {
+            String reason = lastLogLine(outputDir.resolve("ffmpeg.log"));
+            sessions.remove(movieId);
+            deleteSessionFiles(outputDir);
+            log.error("FFmpeg could not start playback for movie {}: {}", movieId, reason);
+            throw new IllegalArgumentException("Cannot play this file: " + reason);
+        }
 
         return session;
     }
@@ -152,18 +161,32 @@ public class TranscodeManager {
         return cmd;
     }
 
-    private void waitForPlaylist(String playlistPath, int timeoutSeconds)
+    private void waitForPlaylist(TranscodeSession session, String playlistPath, int timeoutSeconds)
             throws InterruptedException {
         Path path = Path.of(playlistPath);
         int waited = 0;
-        while (!Files.exists(path) && waited < timeoutSeconds) {
+        // Stop waiting as soon as FFmpeg has exited: no playlist will ever appear
+        while (!Files.exists(path) && session.isAlive() && waited < timeoutSeconds) {
             TimeUnit.SECONDS.sleep(1);
             waited++;
         }
-        if (!Files.exists(path)) {
-            log.warn("Playlist not created after {}s — FFmpeg may have failed. Check ffmpeg.log", timeoutSeconds);
-        } else {
+        if (Files.exists(path)) {
             log.info("Playlist ready after {}s: {}", waited, playlistPath);
+        } else if (session.isAlive()) {
+            log.warn("Playlist not created after {}s. Check ffmpeg.log", timeoutSeconds);
+        }
+    }
+
+    /** Last non-empty line of ffmpeg.log, which is where FFmpeg prints the reason it stopped. */
+    private String lastLogLine(Path logFile) {
+        try {
+            return Files.readAllLines(logFile).stream()
+                    .map(String::trim)
+                    .filter(l -> !l.isEmpty())
+                    .reduce((a, b) -> b)
+                    .orElse("FFmpeg exited without output");
+        } catch (IOException e) {
+            return "FFmpeg exited before producing a playlist";
         }
     }
 

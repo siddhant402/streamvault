@@ -67,3 +67,18 @@ export interface AuthResponse {
   email: string;
   role: string;
 }
+
+
+export interface MovieFilters {
+  genres: string[];
+  yearFrom?: number;
+  yearTo?: number;
+  actor?: string;
+}
+
+export interface FilterOptions {
+  genres: string[];
+  actors: string[];
+  minYear: number | null;
+  maxYear: number | null;
+}

@@ -17,6 +17,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [profile, setProfileState] = useState<Profile | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('sv_token');
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedProfile) {
       try { setProfileState(JSON.parse(storedProfile)); } catch {}
     }
+    setReady(true);
   }, []);
 
   const setToken = (t: string | null) => {
@@ -50,7 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token, profile, setToken, setProfile, logout,
       isAuthenticated: !!token,
     }}>
-      {children}
+      {/* Wait for localStorage so pages never redirect on an empty first render */}
+      {ready ? children : null}
     </AuthContext.Provider>
   );
 }

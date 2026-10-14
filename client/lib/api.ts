@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { FilterOptions, MovieFilters } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -42,8 +43,19 @@ export const authApi = {
 // ── Movies ───────────────────────────────────────────────────────────────────
 
 export const moviesApi = {
-  list: (page = 0, size = 20, sortBy = 'title', direction = 'asc', search?: string) =>
-    api.get('/api/movies', { params: { page, size, sortBy, direction, search } }),
+  list: (page = 0, size = 20, sortBy = 'title', direction = 'asc', search?: string, filters?: MovieFilters) =>
+    api.get('/api/movies', {
+      params: {
+        page, size, sortBy, direction, search,
+        genre: filters?.genres?.length ? filters.genres : undefined,
+        yearFrom: filters?.yearFrom,
+        yearTo: filters?.yearTo,
+        actor: filters?.actor || undefined,
+      },
+      paramsSerializer: { indexes: null }, // genre=a&genre=b
+    }),
+
+  filterOptions: () => api.get<FilterOptions>('/api/movies/filters'),
 
   get: (id: string) =>
     api.get(`/api/movies/${id}`),

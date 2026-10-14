@@ -33,6 +33,14 @@ public class MovieDtos {
             String folderPath    // useful for frontend to know subs/extras location
     ) {}
 
+    /** Values available for the genre / year / actor filters */
+    public record FilterOptionsDto(
+            List<String> genres,
+            List<String> actors,
+            Integer minYear,
+            Integer maxYear
+    ) {}
+
     /** Wrapper for paginated list endpoints */
     public record PageResponse<T>(
             List<T> content,

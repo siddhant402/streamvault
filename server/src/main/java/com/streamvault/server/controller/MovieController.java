@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -22,6 +23,8 @@ public class MovieController {
 
     /**
      * GET /api/movies?page=0&size=20&sortBy=title&direction=asc&search=inception
+     *     &genre=Drama&genre=Crime&yearFrom=1990&yearTo=2010&actor=pacino
+     * Repeated genre values must all match; every filter is optional.
      */
     @GetMapping("/movies")
     public ResponseEntity<PageResponse<MovieSummaryDto>> listMovies(
@@ -29,13 +32,25 @@ public class MovieController {
             @RequestParam(defaultValue = "20")    int size,
             @RequestParam(defaultValue = "title") String sortBy,
             @RequestParam(defaultValue = "asc")   String direction,
-            @RequestParam(required = false)        String search
+            @RequestParam(required = false)        String search,
+            @RequestParam(required = false)        List<String> genre,
+            @RequestParam(required = false)        Integer yearFrom,
+            @RequestParam(required = false)        Integer yearTo,
+            @RequestParam(required = false)        String actor
     ) {
         Sort sort = direction.equalsIgnoreCase("desc")
                 ? Sort.by(sortBy).descending()
                 : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
-        return ResponseEntity.ok(movieService.listMovies(search, pageable));
+        return ResponseEntity.ok(movieService.listMovies(search, genre, yearFrom, yearTo, actor, pageable));
+    }
+
+    /**
+     * GET /api/movies/filters  — genres, actors and year range available for filtering
+     */
+    @GetMapping("/movies/filters")
+    public ResponseEntity<FilterOptionsDto> filterOptions() {
+        return ResponseEntity.ok(movieService.getFilterOptions());
     }
 
     /**
