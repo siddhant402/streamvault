@@ -19,6 +19,9 @@ public class TranscodeSession {
     private final Path outputDir;       // temp dir where .ts segments and .m3u8 are written
     private final String playlistPath;  // absolute path to the .m3u8 file
 
+    /** Account that started this transcode (counts towards its per-user cap). */
+    private String owner;
+
     private Process ffmpegProcess;
     private State state = State.STARTING;
     private Instant startedAt = Instant.now();
@@ -26,6 +29,11 @@ public class TranscodeSession {
 
     public void touch() {
         lastAccessedAt = Instant.now();
+    }
+
+    /** Using CPU now, or about to: counts towards the transcode caps. */
+    public boolean isActive() {
+        return state == State.STARTING || isAlive();
     }
 
     public boolean isAlive() {

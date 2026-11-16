@@ -1,0 +1,21 @@
+# Loaded only with the dev profile:  ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+# Never run with this profile on a shared network.
+spring:
+  datasource:
+    # AUTO_SERVER lets IDE database tools open the file while the app runs (opens a local TCP port)
+    url: jdbc:h2:file:./data/streamvault;AUTO_SERVER=TRUE
+
+  h2:
+    console:
+      enabled: true          # Browse DB at http://localhost:8080/h2-console
+      path: /h2-console
+      settings:
+        web-allow-others: false   # Reachable only from this computer
+
+server:
+  error:
+    include-message: always     # show error details while developing
+
+logging:
+  level:
+    com.streamvault: DEBUG

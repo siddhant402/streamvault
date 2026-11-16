@@ -7,9 +7,10 @@
       environment:
         POSTGRES_DB: streamvault
         POSTGRES_USER: svadmin
-        POSTGRES_PASSWORD: svpassword
+        # Set SV_POSTGRES_PASSWORD in your shell or in an untracked .env file next to this one
+        POSTGRES_PASSWORD: ${SV_POSTGRES_PASSWORD:?Set SV_POSTGRES_PASSWORD}
       ports:
-        - "5432:5432"
+        - "127.0.0.1:5432:5432"   # reachable from this computer only
       volumes:
         - postgres_data:/var/lib/postgresql/data
 
@@ -21,10 +22,10 @@
         - xpack.security.enabled=false
         - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       ports:
-        - "9200:9200"
+        - "127.0.0.1:9200:9200"   # security is disabled, so never expose this to the network
       volumes:
         - es_data:/usr/share/elasticsearch/data
 
   volumes:
     postgres_data:
-    es_data:
+    es_data:

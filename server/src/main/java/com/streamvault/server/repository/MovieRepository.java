@@ -17,6 +17,9 @@ public interface MovieRepository extends JpaRepository<Movie, UUID>, JpaSpecific
     boolean existsByLocalPath(String localPath);
     Page<Movie> findByTitleContainingIgnoreCase(String title, Pageable pageable);
 
+    /** Movies matched on TMDB whose age rating has not been fetched yet. */
+    List<Movie> findByTmdbIdIsNotNullAndAgeRatingIsNull();
+
     /** Raw genre / cast / year columns, used to build the filter options. */
     @Query("select m.genres, m.castMembers, m.releaseYear from Movie m")
     List<Object[]> findFilterSources();

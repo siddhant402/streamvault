@@ -32,8 +32,10 @@ build/
 ### VS Code ###
 .vscode/
 
-# Sensitive config
+# Sensitive config (secrets and local paths)
 src/main/resources/application-local.yml
+/application-local.yml
+.env
 
 # HLS temp output
 streamvault-hls/

@@ -21,7 +21,6 @@ export interface MovieDetail {
   genres: string[];
   castMembers: string[];
   directors: string[];
-  folderPath: string;
 }
 
 export interface PageResponse<T> {
@@ -59,7 +58,6 @@ export interface SubtitleFile {
   filename: string;
   language: string;
   format: string;
-  path: string;
 }
 
 export interface AuthResponse {

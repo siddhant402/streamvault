@@ -1,6 +1,7 @@
 package com.streamvault.server.streaming;
 
 import com.streamvault.server.config.AppProperties;
+import com.streamvault.server.exception.TooManyRequestsException;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,25 +39,65 @@ public class TranscodeManager {
     /** How long a session can be idle before cleanup */
     private static final int IDLE_MINUTES = 30;
 
+    /** One lock per movie, so two viewers pressing play together start only one FFmpeg. */
+    private final Map<UUID, Object> startLocks = new ConcurrentHashMap<>();
+
+    /** Guards the capacity check and the reservation of a new session together. */
+    private final Object capacityLock = new Object();
+
     /**
      * Returns an existing session for the movie, or starts a new one.
      * Blocks until the playlist file (.m3u8) is available (up to 60s).
+     *
+     * @param owner the account starting playback; used for the per-account transcode cap
      */
-    public TranscodeSession getOrStartSession(UUID movieId, String sourcePath)
+    public TranscodeSession getOrStartSession(UUID movieId, String sourcePath, String owner)
             throws IOException, InterruptedException {
 
-        TranscodeSession existing = sessions.get(movieId);
-        if (existing != null && existing.isAlive()) {
-            existing.touch();
-            log.debug("Reusing existing transcode session for movie {}", movieId);
-            return existing;
-        }
+        synchronized (startLocks.computeIfAbsent(movieId, k -> new Object())) {
+            TranscodeSession existing = sessions.get(movieId);
+            if (existing != null && existing.isAlive()) {
+                existing.touch();
+                log.debug("Reusing existing transcode session for movie {}", movieId);
+                return existing;
+            }
 
-        // Start a new session
-        return startSession(movieId, sourcePath);
+            // Start a new session
+            return startSession(movieId, sourcePath, owner);
+        }
     }
 
-    private TranscodeSession startSession(UUID movieId, String sourcePath)
+    /**
+     * Throws 429 if starting one more transcode would go over the overall cap or the
+     * account's own cap. Call while holding capacityLock.
+     */
+    void checkCapacity(String owner) {
+        AppProperties.Streaming limits = appProperties.streamingOrDefault();
+        List<TranscodeSession> active = sessions.values().stream()
+                .filter(TranscodeSession::isActive)
+                .toList();
+
+        if (active.size() >= limits.maxSessionsOrDefault()) {
+            throw new TooManyRequestsException(
+                    "The server is already converting " + active.size()
+                            + " movies, which is its limit. Try again when one of them finishes.", 60);
+        }
+        if (owner != null) {
+            long mine = active.stream().filter(s -> owner.equals(s.getOwner())).count();
+            if (mine >= limits.maxSessionsPerUserOrDefault()) {
+                throw new TooManyRequestsException(
+                        "You are already playing " + mine + " movies that need converting. "
+                                + "Stop one of them first.", 60);
+            }
+        }
+    }
+
+    /** Test hook: registers a session without starting FFmpeg. */
+    void track(TranscodeSession session) {
+        sessions.put(session.getMovieId(), session);
+    }
+
+    private TranscodeSession startSession(UUID movieId, String sourcePath, String owner)
             throws IOException, InterruptedException {
 
         // Create a temp directory for this session's segments
@@ -68,7 +109,25 @@ public class TranscodeManager {
         String playlistPath = outputDir.resolve("playlist.m3u8").toAbsolutePath().toString();
 
         TranscodeSession session = new TranscodeSession(movieId, outputDir, playlistPath);
-        sessions.put(movieId, session);
+        session.setOwner(owner);
+        synchronized (capacityLock) {
+            checkCapacity(owner);
+            sessions.put(movieId, session);   // reserves a slot while FFmpeg starts
+        }
+
+        try {
+            return launch(session, sourcePath, outputDir, playlistPath);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            session.kill();
+            sessions.remove(movieId, session);
+            throw e;
+        }
+    }
+
+    private TranscodeSession launch(TranscodeSession session, String sourcePath, Path outputDir, String playlistPath)
+            throws IOException, InterruptedException {
+
+        UUID movieId = session.getMovieId();
 
         // Probe codec — use stream copy if already H.264 (much faster start)
         FfprobeService.ProbeResult probe = ffprobeService.probe(sourcePath);
@@ -103,13 +162,15 @@ public class TranscodeManager {
         // Wait for the playlist file to appear (player can't start without it)
         waitForPlaylist(session, playlistPath, 60);
 
-        // FFmpeg already exited without writing a playlist: fail fast with its real error
+        // FFmpeg already exited without writing a playlist: fail fast. The reason (which can
+        // include server paths) goes to the log only, not to the viewer.
         if (!Files.exists(Path.of(playlistPath)) && !session.isAlive()) {
             String reason = lastLogLine(outputDir.resolve("ffmpeg.log"));
             sessions.remove(movieId);
             deleteSessionFiles(outputDir);
             log.error("FFmpeg could not start playback for movie {}: {}", movieId, reason);
-            throw new IllegalArgumentException("Cannot play this file: " + reason);
+            throw new IllegalArgumentException(
+                    "This file could not be played. The server log has the details.");
         }
 
         return session;
@@ -244,4 +305,4 @@ public class TranscodeManager {
     public Optional<TranscodeSession> getSession(UUID movieId) {
         return Optional.ofNullable(sessions.get(movieId));
     }
-}
+}

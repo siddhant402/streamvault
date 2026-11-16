@@ -13,7 +13,11 @@ public class AuthDtos {
 
             @NotBlank
             @Size(min = 8, message = "Password must be at least 8 characters")
-            String password
+            String password,
+
+            /** Needed once the first account exists (SV_INVITE_CODE on the server). */
+            @Size(max = 200)
+            String inviteCode
     ) {}
 
     public record LoginRequest(
@@ -26,4 +30,7 @@ public class AuthDtos {
             String email,
             String role
     ) {}
+
+    /** The signed-in account, from GET /api/auth/me. */
+    public record MeResponse(String email, String role) {}
 }

@@ -9,9 +9,10 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setToken } = useAuth();
+  const { signIn } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -19,12 +20,12 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      if (mode === 'register') await authApi.register(email, password);
-      const res = await authApi.login(email, password);
-      setToken(res.data.token);
+      if (mode === 'register') await authApi.register(email, password, inviteCode.trim());
+      await authApi.login(email, password);   // sets the HttpOnly session cookie
+      signIn();
       router.push('/profiles');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid credentials');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Invalid credentials');
     } finally {
       setLoading(false);
     }
@@ -129,6 +130,30 @@ export default function LoginPage() {
             />
           </div>
 
+          {mode === 'register' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label htmlFor="invite-code" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                Invite code
+              </label>
+              <input
+                id="invite-code" type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
+                placeholder="From the server owner" autoComplete="off"
+                style={{
+                  background: 'rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '8px', padding: '14px 16px',
+                  color: 'white', fontSize: '15px', outline: 'none',
+                  transition: 'border-color 0.2s',
+                }}
+                onFocus={e => (e.target.style.borderColor = 'rgba(229,9,20,0.6)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+              />
+              <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>
+                Not needed for the very first account on a new server.
+              </span>
+            </div>
+          )}
+
           {error && (
             <div style={{
               background: 'rgba(229,9,20,0.1)', border: '1px solid rgba(229,9,20,0.2)',
@@ -177,4 +202,4 @@ export default function LoginPage() {
       </div>
     </div>
   );
-}
+}

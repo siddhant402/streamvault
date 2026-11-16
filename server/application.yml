@@ -2,22 +2,27 @@ spring:
   application:
     name: streamvault-server
 
-  profiles:
-    active: dev
+  # Optional untracked file with your secrets and paths (see application-local.example.yml)
+  config:
+    import: optional:file:./application-local.yml
+
+  # No profile is active by default. The dev profile (application-dev.yml) turns on the
+  # H2 console and the ADMIN-only dev endpoints: ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
   # ── H2 Embedded Database (no install needed) ────────────────────────────────
   # Data persists to a file at ./data/streamvault so it survives restarts.
   # Switch to postgres datasource block when ready to dockerize.
   datasource:
-    url: jdbc:h2:file:./data/streamvault;AUTO_SERVER=TRUE
+    url: jdbc:h2:file:./data/streamvault
     driver-class-name: org.h2.Driver
     username: sa
-    password: ""
+    # Set the SV_DB_PASSWORD environment variable. An existing database keeps its old (empty)
+    # password until you change it: see "Database password" in the README.
+    password: ${SV_DB_PASSWORD:}
 
   h2:
     console:
-      enabled: true          # Browse DB at http://localhost:8080/h2-console
-      path: /h2-console
+      enabled: false         # Turned on only by the dev profile (application-dev.yml)
 
   jpa:
     hibernate:
@@ -33,27 +38,55 @@ spring:
 server:
   port: 8080
   error:
-    include-message: always
-    include-binding-errors: always
+    include-message: never        # don't send internal error details to browsers
+    include-binding-errors: never
+  # Behind the HTTPS proxy (Caddyfile), trust X-Forwarded-* headers only from this computer,
+  # so nobody on the WiFi can fake their address to get around the sign-in limits.
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: 127\.0\.0\.1|0:0:0:0:0:0:0:1
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging:
   level:
-    com.streamvault: DEBUG
+    com.streamvault: INFO           # the dev profile turns on DEBUG
     org.hibernate.SQL: WARN
 
 # ── App Custom Properties ────────────────────────────────────────────────────
+# Secrets and machine-specific paths do NOT go in this file (it is tracked by Git).
+# Set them as environment variables, or copy application-local.example.yml to
+# application-local.yml (ignored by Git) and fill it in.
 app:
   media:
-    root-path: /path/to/your/movies        # Your local movies folder — subfolders per movie
-    hls-output-path: ${java.io.tmpdir}/streamvault-hls   # Temp folder for HLS segments
-    ffmpeg-path: ffmpeg       (USE YOUR OWN PATH FOR FFMPEG)  # Just "ffmpeg" if it's on PATH, else full path e.g. C:\ffmpeg\bin\ffmpeg.exe
+    root-path: ${SV_MEDIA_ROOT:/path/to/your/movies}   # Folder with one subfolder per movie
+    hls-output-path: ${java.io.tmpdir}/streamvault-hls  # Temp folder for HLS segments
+    ffmpeg-path: ${SV_FFMPEG_PATH:ffmpeg}             # "ffmpeg" if on PATH, else e.g. C:\ffmpeg\bin\ffmpeg.exe
 
   jwt:
-    # Generate your own: openssl rand -base64 32  (must be Base64, min 32 chars)
-    secret: CHANGE_ME_run_openssl_rand_base64_32
+    # Required. Generate with: openssl rand -base64 32   (Base64, at least 32 bytes)
+    secret: ${SV_JWT_SECRET:}
     expiration-ms: 86400000     # 24 hours
+    stream-expiration-ms: 21600000   # 6 hours; movie-scoped tokens used only by Safari/iOS playback
 
   tmdb:
-    api-key: YOUR_TMDB_API_KEY  # Free at https://www.themoviedb.org/settings/api
+    api-key: ${SV_TMDB_API_KEY:}   # Optional. Free at https://www.themoviedb.org/settings/api
     base-url: https://api.themoviedb.org/3
+    certification-country: ${SV_CERT_COUNTRY:US}   # whose age ratings to use: US, IN, GB, DE, ...
+
+  auth:
+    # Needed to register once the first account exists. Leave unset to close registration.
+    invite-code: ${SV_INVITE_CODE:}
+    max-failed-logins: 5               # per account, within the window below
+    failed-login-window-minutes: 15
+    max-registrations-per-hour: 5      # per device (IP address)
+    # Accounts made administrators at startup, comma-separated (the first account is admin anyway)
+    admin-emails: ${SV_ADMIN_EMAILS:}
+
+  streaming:
+    max-sessions: ${SV_MAX_TRANSCODES:3}   # movies FFmpeg may convert at the same time
+    max-sessions-per-user: 2
+
+  cors:
+    # Address(es) of the web app, comma-separated. With the HTTPS proxy, e.g. https://streamvault.local
+    allowed-origins: ${SV_CORS_ORIGINS:http://localhost:3000}

@@ -29,8 +29,7 @@ public class MovieDtos {
             String ageRating,
             List<String> genres,
             List<String> castMembers,
-            List<String> directors,
-            String folderPath    // useful for frontend to know subs/extras location
+            List<String> directors
     ) {}
 
     /** Values available for the genre / year / actor filters */

@@ -26,9 +26,9 @@ public class MovieService {
 
     public PageResponse<MovieSummaryDto> listMovies(String search, List<String> genres,
                                                     Integer yearFrom, Integer yearTo, String actor,
-                                                    Pageable pageable) {
+                                                    int ageLimit, Pageable pageable) {
         Page<Movie> page = movieRepository.findAll(
-                buildSpec(search, genres, yearFrom, yearTo, actor), pageable);
+                buildSpec(search, genres, yearFrom, yearTo, actor, ageLimit), pageable);
 
         List<MovieSummaryDto> content = page.getContent().stream()
                 .map(this::toSummary)
@@ -72,9 +72,16 @@ public class MovieService {
      * All supplied filters are combined with AND.
      */
     private Specification<Movie> buildSpec(String search, List<String> genres,
-                                           Integer yearFrom, Integer yearTo, String actor) {
+                                           Integer yearFrom, Integer yearTo, String actor,
+                                           int ageLimit) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            // Profile age limit: below 18, only rated movies at or under the limit
+            if (ageLimit < ViewerAgeLimit.NO_LIMIT) {
+                predicates.add(cb.isNotNull(root.get("minimumAge")));
+                predicates.add(cb.lessThanOrEqualTo(root.get("minimumAge"), ageLimit));
+            }
 
             if (search != null && !search.isBlank()) {
                 predicates.add(cb.like(cb.lower(root.get("title")),
@@ -104,9 +111,10 @@ public class MovieService {
         };
     }
 
-    public MovieDetailDto getMovie(UUID id) {
+    public MovieDetailDto getMovie(UUID id, int ageLimit) {
         Movie movie = movieRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Movie not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Movie not found"));
+        ViewerAgeLimit.require(ageLimit, movie);
         return toDetail(movie);
     }
 
@@ -141,8 +149,7 @@ public class MovieService {
                 m.getAgeRating(),
                 splitCsv(m.getGenres()),
                 splitCsv(m.getCastMembers()),
-                splitCsv(m.getDirectors()),
-                m.getFolderPath()
+                splitCsv(m.getDirectors())
         );
     }
 

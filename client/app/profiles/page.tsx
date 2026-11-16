@@ -14,11 +14,21 @@ const AVATAR_CONFIGS = [
   { bg: 'linear-gradient(135deg, #1a78c2 0%, #00c6ff 100%)', glow: 'rgba(26,120,194,0.5)' },
 ];
 
+/** Profile age limits: only movies rated for this age or younger are shown. */
+const AGE_OPTIONS = [
+  { value: 18, label: 'Adults (all movies)' },
+  { value: 16, label: 'Teens 16+' },
+  { value: 13, label: 'Teens 13+' },
+  { value: 7, label: 'Kids 7+' },
+  { value: 0, label: 'Young kids (U / G only)' },
+];
+
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newAge, setNewAge] = useState(18);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fadeOut, setFadeOut] = useState(false);
   const { setProfile, logout, isAuthenticated } = useAuth();
@@ -41,9 +51,10 @@ export default function ProfilesPage() {
   const createProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    const res = await profilesApi.create(newName.trim());
+    const res = await profilesApi.create(newName.trim(), newAge);
     setProfiles(prev => [...prev, res.data]);
     setNewName('');
+    setNewAge(18);
     setCreating(false);
   };
 
@@ -155,7 +166,7 @@ export default function ProfilesPage() {
 
       {/* Create form */}
       {creating && (
-        <form onSubmit={createProfile} style={{ marginTop: '32px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <form onSubmit={createProfile} style={{ position: 'relative', marginTop: '32px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', alignItems: 'center' }}>
           <input autoFocus type="text" value={newName} onChange={e => setNewName(e.target.value)}
             placeholder="Profile name"
             style={{
@@ -166,6 +177,17 @@ export default function ProfilesPage() {
             onFocus={e => (e.target.style.borderColor = 'rgba(229,9,20,0.5)')}
             onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
           />
+          <label htmlFor="profile-age" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+            Who is this profile for?
+          </label>
+          <select id="profile-age" value={newAge} onChange={e => setNewAge(Number(e.target.value))}
+            style={{
+              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '8px', padding: '12px 12px', color: 'white', fontSize: '14px',
+              outline: 'none', colorScheme: 'dark',
+            }}>
+            {AGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <button type="submit" style={{
             background: '#e50914', color: 'white', border: 'none', borderRadius: '8px',
             padding: '12px 20px', fontSize: '14px', fontWeight: 500, cursor: 'pointer',
@@ -191,4 +213,4 @@ export default function ProfilesPage() {
       </button>
     </div>
   );
-}
+}

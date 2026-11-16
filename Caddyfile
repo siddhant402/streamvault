@@ -1,0 +1,21 @@
+# HTTPS front door for StreamVault on your home network (fixes plain HTTP on WiFi).
+#
+# 1. Install Caddy: https://caddyserver.com/download (a single caddy.exe on Windows)
+# 2. Set SV_HOST to this computer's LAN IP or name, e.g. 192.168.1.20 or streamvault.local
+# 3. From this folder run:   caddy run
+# 4. Trust Caddy's local certificate on each device (README, "HTTPS on your network")
+#
+# Caddy serves the web app and the API on one HTTPS address. Start the server and the
+# web app so they only listen on this computer (README shows how), so the plain-HTTP
+# ports are not reachable from the WiFi.
+{$SV_HOST:streamvault.local} {
+	tls internal
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

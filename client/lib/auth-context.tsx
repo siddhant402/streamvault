@@ -2,57 +2,69 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Profile } from '@/types';
+import { authApi } from '@/lib/api';
+import { goTo } from '@/lib/navigation';
 
 interface AuthContextType {
-  token: string | null;
   profile: Profile | null;
-  setToken: (token: string | null) => void;
   setProfile: (profile: Profile | null) => void;
-  logout: () => void;
+  /** Call after a successful sign-in; the server has already set the session cookie. */
+  signIn: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/**
+ * The login token lives in an HttpOnly cookie that page scripts cannot read, so whether we
+ * are signed in is asked from the server (GET /api/auth/me) instead of read from storage.
+ * Only the chosen profile, which is not secret, is kept in localStorage.
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
   const [profile, setProfileState] = useState<Profile | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('sv_token');
-    const storedProfile = localStorage.getItem('sv_profile');
-    if (storedToken) setTokenState(storedToken);
-    if (storedProfile) {
-      try { setProfileState(JSON.parse(storedProfile)); } catch {}
-    }
-    setReady(true);
-  }, []);
+    try { localStorage.removeItem('sv_token'); } catch {}   // token stored by older versions
+    try {
+      const storedProfile = localStorage.getItem('sv_profile');
+      if (storedProfile) setProfileState(JSON.parse(storedProfile));
+    } catch {}
 
-  const setToken = (t: string | null) => {
-    setTokenState(t);
-    if (t) localStorage.setItem('sv_token', t);
-    else localStorage.removeItem('sv_token');
-  };
+    authApi.me()
+      .then(() => setSignedIn(true))
+      .catch(() => setSignedIn(false))
+      .finally(() => setReady(true));
+  }, []);
 
   const setProfile = (p: Profile | null) => {
     setProfileState(p);
-    if (p) localStorage.setItem('sv_profile', JSON.stringify(p));
-    else localStorage.removeItem('sv_profile');
+    try {
+      if (p) localStorage.setItem('sv_profile', JSON.stringify(p));
+      else localStorage.removeItem('sv_profile');
+    } catch {}
   };
 
-  const logout = () => {
-    setToken(null);
+  const signIn = () => {
+    setProfile(null);   // a profile from a previous account must not carry over
+    setSignedIn(true);
+  };
+
+  const logout = async () => {
+    await authApi.logout().catch(() => {});
     setProfile(null);
-    window.location.href = '/login';
+    setSignedIn(false);
+    goTo('/login');
   };
 
   return (
     <AuthContext.Provider value={{
-      token, profile, setToken, setProfile, logout,
-      isAuthenticated: !!token,
+      profile, setProfile, signIn, logout,
+      isAuthenticated: signedIn,
     }}>
-      {/* Wait for localStorage so pages never redirect on an empty first render */}
+      {/* Wait for the sign-in check so pages never redirect on an empty first render */}
       {ready ? children : null}
     </AuthContext.Provider>
   );

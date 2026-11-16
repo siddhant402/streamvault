@@ -13,7 +13,7 @@ export default function PlayerPage() {
   const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const startTime = Number(searchParams.get('t') || 0);
-  const { isAuthenticated, profile, token } = useAuth();
+  const { isAuthenticated, profile } = useAuth();
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -39,7 +39,7 @@ export default function PlayerPage() {
 
   useEffect(() => {
     if (!isAuthenticated) { router.replace('/login'); return; }
-    if (!profile || !token) { router.replace('/profiles'); return; }
+    if (!profile) { router.replace('/profiles'); return; }
     loadAndPlay();
     return () => cleanup();
   }, [id]);
@@ -54,15 +54,22 @@ export default function PlayerPage() {
   };
 
   useEffect(() => {
-    if (!loading && !error && token && videoRef.current) initHls();
-  }, [loading, token]);
+    if (!loading && !error && videoRef.current) initHls();
+  }, [loading]);
 
-  const initHls = () => {
-    if (!videoRef.current || !token) return;
-    const playlistUrl = `http://localhost:8080/api/stream/${id}/playlist.m3u8?token=${token}`;
+  const initHls = async () => {
+    if (!videoRef.current || !profile) return;
+    const profileId = profile.id;
     if (Hls.isSupported()) {
-      const hls = new Hls({ autoStartLoad: false, startLevel: -1, maxBufferLength: 30, maxMaxBufferLength: 60 });
-      hls.loadSource(playlistUrl);
+      const hls = new Hls({
+        autoStartLoad: false, startLevel: -1, maxBufferLength: 30, maxMaxBufferLength: 60,
+        // Send the session cookie and the profile (for its age limit); no token in any URL
+        xhrSetup: (xhr) => {
+          xhr.withCredentials = true;
+          xhr.setRequestHeader('X-Profile-Id', profileId);
+        },
+      });
+      hls.loadSource(streamingApi.getPlaylistUrl(id));
       hls.attachMedia(videoRef.current);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         hls.startLoad(0);
@@ -79,9 +86,16 @@ export default function PlayerPage() {
       });
       hlsRef.current = hls;
     } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
-      videoRef.current.src = playlistUrl;
-      videoRef.current.currentTime = startTime > 0 ? startTime : 0;
-      videoRef.current.play().catch(console.error);
+      // Native HLS (Safari / iOS) cannot send headers, so use a short-lived token
+      // that only unlocks this movie's playlist and segments
+      try {
+        const { data } = await streamingApi.getStreamToken(id);
+        const video = videoRef.current;
+        if (!video) return;
+        video.src = streamingApi.getPlaylistUrl(id, data.token);
+        video.currentTime = startTime > 0 ? startTime : 0;
+        video.play().catch(console.error);
+      } catch { setError('Could not start the stream.'); }
     } else { setError('HLS not supported. Try Chrome.'); }
   };
 
@@ -336,4 +350,4 @@ export default function PlayerPage() {
       </div>
     </div>
   );
-}
+}

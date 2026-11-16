@@ -26,7 +26,7 @@ const call = async (path, { method = "GET", token, body } = {}) => {
 };
 
 // --- demo data through the API
-await call("/api/auth/register", { method: "POST", body: { email: EMAIL, password: PASSWORD } });
+await call("/api/auth/register", { method: "POST", body: { email: EMAIL, password: PASSWORD, inviteCode: process.env.SV_INVITE_CODE } });
 const login = await call("/api/auth/login", { method: "POST", body: { email: EMAIL, password: PASSWORD } });
 if (!login.ok) throw new Error(`Login failed (${login.status}). Is the API running?`);
 const token = login.data.token;

@@ -1,0 +1,16 @@
+# Copy this file to application-local.yml (same folder) and fill it in.
+# application-local.yml is ignored by Git, so your secrets never get committed.
+# Environment variables (SV_JWT_SECRET, SV_TMDB_API_KEY, ...) work too and take priority.
+app:
+  media:
+    root-path: D:/Movies                      # Folder with one subfolder per movie
+    ffmpeg-path: C:/ffmpeg/bin/ffmpeg.exe     # Or just: ffmpeg  (if it is on PATH)
+  jwt:
+    secret: PASTE_OUTPUT_OF_openssl_rand_base64_32
+  tmdb:
+    api-key: YOUR_TMDB_API_KEY
+
+# Only if you set a database password (see README, "Database password")
+# spring:
+#   datasource:
+#     password: your-db-password

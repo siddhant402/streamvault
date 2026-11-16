@@ -42,7 +42,11 @@ public class Movie {
     private String posterUrl;
     private String backdropUrl;
     private Integer runtimeMinutes;
+    /** Certification as published, e.g. "PG-13" (from TMDB, for the configured country). */
     private String ageRating;
+
+    /** Youngest viewer age the certification allows; null when not rated. */
+    private Integer minimumAge;
 
     /** Comma-separated: "Action,Drama,Sci-Fi" */
     private String genres;

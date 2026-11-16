@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -41,6 +42,16 @@ public class MediaScannerService {
         ScanResult result = scan();
         log.info("=== Scan complete — scanned={}, added={}, skipped={}, errors={} ===",
                 result.scanned(), result.added(), result.skipped(), result.errors());
+
+        // Movies added before age ratings were stored: fetch their rating once
+        List<Movie> unrated = movieRepository.findByTmdbIdIsNotNullAndAgeRatingIsNull();
+        if (!unrated.isEmpty()) {
+            int updated = tmdbService.backfillAgeRatings(unrated);
+            if (updated > 0) {
+                movieRepository.saveAll(unrated);
+                log.info("Fetched age ratings for {} movie(s)", updated);
+            }
+        }
     }
 
     public ScanResult scan() {

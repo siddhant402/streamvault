@@ -1,29 +1,40 @@
 import axios from 'axios';
 import { FilterOptions, MovieFilters } from '@/types';
+import { goTo } from '@/lib/navigation';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Default: same address as the web app, which forwards /api/* to the server (next.config.ts).
+// Set NEXT_PUBLIC_API_URL only to call a server on another address directly.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 const api = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,   // send the HttpOnly session cookie
 });
 
-// Attach JWT token to every request
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('sv_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+/** Id of the chosen profile, sent so the server can apply its age limit. */
+export function currentProfileId(): string | null {
+  try {
+    const stored = localStorage.getItem('sv_profile');
+    return stored ? (JSON.parse(stored).id ?? null) : null;
+  } catch {
+    return null;
   }
+}
+
+api.interceptors.request.use((config) => {
+  const profileId = currentProfileId();
+  if (profileId) config.headers['X-Profile-Id'] = profileId;
   return config;
 });
 
-// Redirect to login on 401
+// Signed out or session expired: go to the sign-in page (but not for the sign-in calls themselves)
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem('sv_token');
-      localStorage.removeItem('sv_profile');
-      window.location.href = '/login';
+    const url: string = err.config?.url ?? '';
+    if (err.response?.status === 401 && !url.startsWith('/api/auth/') && window.location.pathname !== '/login') {
+      try { localStorage.removeItem('sv_profile'); } catch {}
+      goTo('/login');
     }
     return Promise.reject(err);
   }
@@ -32,12 +43,12 @@ api.interceptors.response.use(
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export const authApi = {
-  register: (email: string, password: string) =>
-    api.post('/api/auth/register', { email, password }),
+  register: (email: string, password: string, inviteCode?: string) =>
+    api.post('/api/auth/register', { email, password, inviteCode: inviteCode || undefined }),
   login: (email: string, password: string) =>
-    api.post<{ token: string; email: string; role: string }>(
-      '/api/auth/login', { email, password }
-    ),
+    api.post<{ email: string; role: string }>('/api/auth/login', { email, password }),
+  logout: () => api.post('/api/auth/logout'),
+  me: () => api.get<{ email: string; role: string }>('/api/auth/me'),
 };
 
 // ── Movies ───────────────────────────────────────────────────────────────────
@@ -96,8 +107,13 @@ export const watchApi = {
 // ── Streaming ─────────────────────────────────────────────────────────────────
 
 export const streamingApi = {
-  getPlaylistUrl: (movieId: string, token: string) =>
-    `${API_BASE}/api/stream/${movieId}/playlist.m3u8?token=${token}`,
+  // No token in the URL by default: hls.js sends the session cookie instead.
+  // streamToken is only for native HLS (Safari / iOS), which cannot send headers.
+  getPlaylistUrl: (movieId: string, streamToken?: string) =>
+    `${API_BASE}/api/stream/${movieId}/playlist.m3u8` +
+    (streamToken ? `?token=${encodeURIComponent(streamToken)}` : ''),
+  getStreamToken: (movieId: string) =>
+    api.post<{ token: string; expiresAt: string }>(`/api/stream/${movieId}/token`),
   getSubtitles: (movieId: string) =>
     api.get(`/api/stream/${movieId}/subtitles`),
   stopStream: (movieId: string) =>

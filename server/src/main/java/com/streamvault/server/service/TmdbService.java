@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -25,11 +26,13 @@ public class TmdbService {
 
     private final RestClient restClient;
     private final String apiKey;
+    private final String certificationCountry;
 
     private static final String IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
 
     public TmdbService(AppProperties appProperties) {
         this.apiKey = appProperties.tmdb().apiKey();
+        this.certificationCountry = appProperties.tmdb().certificationCountryOrDefault();
         this.restClient = RestClient.builder()
                 .baseUrl(appProperties.tmdb().baseUrl())
                 .build();
@@ -77,7 +80,7 @@ public class TmdbService {
 
     private void fetchAndApplyDetails(Movie movie, int tmdbId) {
         TmdbMovieDetail detail = restClient.get()
-                .uri("/movie/{id}?api_key={k}&append_to_response=credits&language=en-US",
+                .uri("/movie/{id}?api_key={k}&append_to_response=credits,release_dates&language=en-US",
                         tmdbId, apiKey)
                 .retrieve()
                 .body(TmdbMovieDetail.class);
@@ -89,7 +92,7 @@ public class TmdbService {
         movie.setOriginalTitle(detail.originalTitle());
         movie.setSynopsis(detail.overview());
         movie.setRuntimeMinutes(detail.runtime());
-        movie.setAgeRating(detail.ageRating());
+        applyCertification(movie, detail.releaseDates());
 
         if (detail.posterPath() != null) {
             movie.setPosterUrl(IMAGE_BASE + detail.posterPath());
@@ -124,6 +127,50 @@ public class TmdbService {
         log.debug("TMDB enriched '{}' (tmdbId={})", movie.getTitle(), tmdbId);
     }
 
+    /**
+     * Fills in the age rating of movies that were added before ratings were stored.
+     * Skipped when no TMDB key is set. Returns how many movies were updated.
+     */
+    public int backfillAgeRatings(List<Movie> movies) {
+        if (isApiKeyMissing()) return 0;
+        int updated = 0;
+        for (Movie movie : movies) {
+            if (movie.getTmdbId() == null) continue;
+            try {
+                TmdbReleaseDates dates = restClient.get()
+                        .uri("/movie/{id}/release_dates?api_key={k}", movie.getTmdbId(), apiKey)
+                        .retrieve()
+                        .body(TmdbReleaseDates.class);
+                if (applyCertification(movie, dates)) updated++;
+            } catch (RestClientException e) {
+                log.warn("TMDB rating lookup failed for '{}': {}", movie.getTitle(), e.getMessage());
+            }
+        }
+        return updated;
+    }
+
+    /** Sets ageRating and minimumAge from the configured country's certification. */
+    boolean applyCertification(Movie movie, TmdbReleaseDates dates) {
+        String cert = certificationFor(dates, certificationCountry);
+        if (cert == null) return false;
+        movie.setAgeRating(cert);
+        movie.setMinimumAge(AgeRatings.minimumAge(certificationCountry, cert));
+        return true;
+    }
+
+    /** First non-blank certification for the country, preferring theatrical releases (type 3). */
+    static String certificationFor(TmdbReleaseDates dates, String country) {
+        if (dates == null || dates.results() == null) return null;
+        return dates.results().stream()
+                .filter(r -> country.equalsIgnoreCase(r.country()) && r.releases() != null)
+                .flatMap(r -> r.releases().stream())
+                .filter(r -> r.certification() != null && !r.certification().isBlank())
+                .sorted(Comparator.comparing((TmdbRelease r) -> !Integer.valueOf(3).equals(r.type())))
+                .map(r -> r.certification().trim())
+                .findFirst()
+                .orElse(null);
+    }
+
     private boolean isApiKeyMissing() {
         return apiKey == null || apiKey.isBlank() || apiKey.equals("YOUR_TMDB_API_KEY");
     }
@@ -146,13 +193,22 @@ public class TmdbService {
             @JsonProperty("backdrop_path") String backdropPath,
             @JsonProperty("release_date") String releaseDate,
             Integer runtime,
-            @JsonProperty("release_dates") Object releaseDates,  // simplified — parsed below
+            @JsonProperty("release_dates") TmdbReleaseDates releaseDates,
             List<TmdbGenre> genres,
             TmdbCredits credits
-    ) {
-        // Age rating from release_dates is complex — keep null for now
-        public String ageRating() { return null; }
-    }
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TmdbReleaseDates(List<TmdbCountryRelease> results) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TmdbCountryRelease(
+            @JsonProperty("iso_3166_1") String country,
+            @JsonProperty("release_dates") List<TmdbRelease> releases
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TmdbRelease(String certification, Integer type) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record TmdbGenre(int id, String name) {}

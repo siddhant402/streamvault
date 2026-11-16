@@ -20,7 +20,8 @@ public class SubtitleService {
             ".srt", ".ass", ".ssa", ".vtt"
     );
 
-    public record SubtitleFile(String filename, String language, String format, String path) {}
+    /** What the API returns: no server paths. */
+    public record SubtitleFile(String filename, String language, String format) {}
 
     /**
      * Lists all subtitle files found in the movie's folder.
@@ -40,8 +41,7 @@ public class SubtitleService {
                 results.add(new SubtitleFile(
                         filename,
                         detectLanguage(filename),
-                        detectFormat(filename),
-                        p.toAbsolutePath().toString()
+                        detectFormat(filename)
                 ));
             });
         } catch (IOException e) {
@@ -52,11 +52,33 @@ public class SubtitleService {
     }
 
     /**
-     * Finds a specific subtitle file by filename within the folder.
+     * Finds a subtitle file by name. Only a plain file name with a subtitle extension, sitting
+     * directly in the movie's folder, is accepted: no "..", slashes, drive letters or other
+     * file types.
      */
     public Optional<Path> findSubtitleFile(String folderPath, String filename) {
-        Path file = Path.of(folderPath, filename);
-        if (Files.exists(file) && Files.isReadable(file)) {
+        if (filename == null || filename.isBlank()
+                || filename.contains("/") || filename.contains("\\") || filename.contains(":")
+                || filename.contains("..") || filename.indexOf('\0') >= 0) {
+            return Optional.empty();
+        }
+        String lower = filename.toLowerCase();
+        if (SUBTITLE_EXTENSIONS.stream().noneMatch(lower::endsWith)) {
+            return Optional.empty();
+        }
+
+        Path folder;
+        Path file;
+        try {
+            folder = Path.of(folderPath).toAbsolutePath().normalize();
+            file = folder.resolve(filename).normalize();
+        } catch (InvalidPathException e) {
+            return Optional.empty();
+        }
+        if (!folder.equals(file.getParent())) {
+            return Optional.empty();
+        }
+        if (Files.isRegularFile(file) && Files.isReadable(file)) {
             return Optional.of(file);
         }
         return Optional.empty();

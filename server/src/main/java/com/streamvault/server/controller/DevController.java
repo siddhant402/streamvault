@@ -7,6 +7,7 @@ import com.streamvault.server.repository.ProfileRepository;
 import com.streamvault.server.repository.WatchEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,13 +15,15 @@ import java.util.List;
 
 /**
  * Dev-only endpoints for testing convenience.
- * Only active when spring.profiles.active=dev (never in prod).
+ * Only loaded when the "dev" profile is enabled explicitly (it is off by default),
+ * and every endpoint requires the ADMIN role.
  * The @Profile annotation is used fully qualified to avoid clash with the Profile entity.
  */
 @RestController
 @RequestMapping("/api/dev")
 @RequiredArgsConstructor
 @org.springframework.context.annotation.Profile("dev")
+@PreAuthorize("hasRole('ADMIN')")
 public class DevController {
 
     private final AccountRepository accountRepository;
@@ -50,4 +53,4 @@ public class DevController {
         });
         return ResponseEntity.noContent().build();
     }
-}
+}
